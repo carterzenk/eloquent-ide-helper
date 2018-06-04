@@ -31,7 +31,7 @@ use Barryvdh\Reflection\DocBlock\Serializer as DocBlockSerializer;
  *
  * @author Barry vd. Heuvel <barryvdh@gmail.com>
  */
-class ModelsCommand extends Command
+class ModelsCommand extends AbstractCommand
 {
     protected $properties = [];
     protected $methods = [];
@@ -44,33 +44,6 @@ class ModelsCommand extends Command
     protected $verbosity;
 
     /**
-     * @param array $settings
-     */
-    public function __construct(array $settings = [])
-    {
-        $this->settings = $settings;
-        $this->dirs = $this->fromSettings('modelDirectories', []);
-        $this->filename = $this->fromSettings('outputFile', '_ide_helper_models.php');
-        $this->ignore = $this->fromSettings('ignore', []);
-
-        parent::__construct();
-    }
-
-    /**
-     * @param $offset
-     * @param $default
-     * @return mixed
-     */
-    protected function fromSettings($offset, $default)
-    {
-        if (isset($this->settings[$offset])) {
-            return $this->settings[$offset];
-        } else {
-            return $default;
-        }
-    }
-
-    /**
      * @inheritdoc
      */
     public function configure()
@@ -80,7 +53,7 @@ class ModelsCommand extends Command
         $this->setHelp('Generates auto-completion for models.');
 
         $this->addArgument('model', InputArgument::OPTIONAL | InputArgument::IS_ARRAY, 'Which models to include', []);
-        $this->addOption('filename', 'F', InputOption::VALUE_OPTIONAL, 'The path to the helper file', $this->filename);
+        $this->addOption('filename', 'F', InputOption::VALUE_OPTIONAL, 'The path to the helper file');
         $this->addOption('dir', 'D', InputOption::VALUE_OPTIONAL | InputOption::VALUE_IS_ARRAY, 'The model dirs', []);
         $this->addOption('ignore', 'I', InputOption::VALUE_OPTIONAL, 'Which models to ignore', "");
         $this->addOption('write', 'W', InputOption::VALUE_NONE, 'Write to Model file');
@@ -91,23 +64,19 @@ class ModelsCommand extends Command
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
-     * @return int|null|void
+     * @return int|null
+     * @throws \Exception
      */
     public function execute(InputInterface $input, OutputInterface $output)
     {
-        $this->verbosity = $output->getVerbosity();
-        $this->dirs = array_merge($this->dirs, $input->getOption('dir'));
-        $this->write = $input->getOption('write');
-        $this->reset = $input->getOption('reset');
+        $this->bootstrap($input, $output);
 
-        $ignore = array_merge($this->ignore, explode(",", $input->getOption('ignore')));
-        $filename = $input->getOption('filename');
         $model = $input->getArgument('model');
 
         $io = new SymfonyStyle($input, $output);
 
         //If filename is default and Write is not specified, ask what to do
-        if (!$this->write && $filename === $this->filename && !$input->getOption('nowrite')) {
+        if (!$this->write && $this->filename === $this->config->getModelOutputFile() && !$input->getOption('nowrite')) {
             $overwriteModels = $io->confirm(
                 "Do you want to overwrite the existing model files? Choose no to write to $this->filename instead.",
                 false
@@ -118,18 +87,50 @@ class ModelsCommand extends Command
             }
         }
 
-        $content = $this->generateDocs($io, $model, $ignore);
+        $content = $this->generateDocs($io, $model, $this->ignore);
 
         if (!$this->write) {
-            if (file_put_contents($filename, $content, 0) != false) {
-                $io->success("Model information was written to $filename");
+            if (file_put_contents($this->filename, $content, 0) != false) {
+                $io->success("Model information was written to $this->filename");
             } else {
-                $io->error("Failed to write model information to $filename");
+                $io->error("Failed to write model information to $this->filename");
                 return 1;
             }
         }
 
         return null;
+    }
+
+    /**
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     * @throws \Exception
+     */
+    protected function boostrap(InputInterface $input, OutputInterface $output)
+    {
+        parent::bootstrap($input, $output);
+
+        $this->verbosity = $output->getVerbosity();
+
+        $this->dirs = $input->hasOption('dir')
+            ? $input->getOptions('dir')
+            : $this->config->getModelDirectories();
+
+        $this->write = $input->hasOption('write')
+            ? $input->getOption('write')
+            : $this->config->getModelWrite();
+
+        $this->reset = $input->hasOption('reset')
+            ? $input->getOption('reset')
+            : $this->config->getModelReset();
+
+        $this->filename = $input->hasOption('filename')
+            ? $input->getOption('filename')
+            : $this->config->getModelOutputFile();
+
+        $this->ignore = $input->hasOption('ignore')
+            ? explode(',', $input->getOption('ignore'))
+            : $this->config->getIgnoredModels();
     }
 
     /**
@@ -299,7 +300,7 @@ class ModelsCommand extends Command
      */
     protected function getTypeOverride($type)
     {
-        $typeOverrides = $this->fromSettings('typeOverrides', []);
+        $typeOverrides = $this->config->getModelTypeOverrides();
 
         return isset($typeOverrides[$type]) ? $typeOverrides[$type] : $type;
     }
@@ -317,7 +318,7 @@ class ModelsCommand extends Command
         $databasePlatform->registerDoctrineTypeMapping('enum', 'string');
 
         $platformName = $databasePlatform->getName();
-        $customDbTypes = $this->fromSettings("customDbTypes", []);
+        $customDbTypes = $this->config->getModelCustomDbTypes();
 
         $customTypes = isset($customDbTypes[$platformName]) ? $customDbTypes[$platformName] : [];
 
@@ -609,7 +610,7 @@ class ModelsCommand extends Command
                 $attr = 'property-read';
             }
 
-            if ($this->hasCamelCaseModelProperties()) {
+            if ($this->config->getModelCamelCasedProperties()) {
                 $name = Str::camel($name);
             }
 
@@ -705,14 +706,6 @@ class ModelsCommand extends Command
         /** @var \Illuminate\Database\Eloquent\Model $model */
         $model = new $className;
         return '\\' . get_class($model->newCollection());
-    }
-
-    /**
-     * @return bool
-     */
-    protected function hasCamelCaseModelProperties()
-    {
-        return $this->fromSettings('modelCamelCaseProperties', false);
     }
 
     /**

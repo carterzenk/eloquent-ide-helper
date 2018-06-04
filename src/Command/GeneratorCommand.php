@@ -10,7 +10,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-class GeneratorCommand extends Command
+class GeneratorCommand extends AbstractCommand
 {
     /**
      * @var string
@@ -23,18 +23,6 @@ class GeneratorCommand extends Command
     protected $format;
 
     /**
-     * GeneratorCommand constructor.
-     * @param array $settings
-     */
-    public function __construct(array $settings = [])
-    {
-        $this->filename = isset($settings['outputFile']) ? $settings['outputFile'] : '_ide_helper_facades.php';
-        $this->format = isset($settings['format']) ? $settings['format'] : 'php';
-
-        parent::__construct();
-    }
-
-    /**
      * @inheritdoc
      */
     public function configure()
@@ -43,18 +31,26 @@ class GeneratorCommand extends Command
         $this->setDescription('Facade IDE Helper');
         $this->setHelp('Generates auto-completion for Eloquent facades.');
 
-        $this->addArgument('filename', InputArgument::OPTIONAL, 'The path to the helper file', $this->filename);
-        $this->addOption('format', 'F', InputOption::VALUE_OPTIONAL, 'The format for the IDE Helper', $this->format);
+        $this->addArgument('filename', InputArgument::OPTIONAL, 'The path to the helper file');
+        $this->addOption('format', 'F', InputOption::VALUE_OPTIONAL, 'The format for the IDE Helper', 'php');
     }
 
     /**
      * @param InputInterface $input
      * @param OutputInterface $output
+     * @throws \Exception
      * @return int|null|void
      */
     public function execute(InputInterface $input, OutputInterface $output)
     {
+        $this->bootstrap($input, $output);
+
         $filename = $input->getArgument('filename');
+
+        if (!$filename) {
+            $filename = $this->config->getFacadeOutputFile();
+        }
+
         $format = $input->getOption('format');
 
         $io = new SymfonyStyle($input, $output);

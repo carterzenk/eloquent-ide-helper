@@ -1,0 +1,17 @@
+#!/usr/bin/env php
+<?php
+
+use CarterZenk\EloquentIdeHelper\Command\GeneratorCommand;
+use CarterZenk\EloquentIdeHelper\Command\ModelsCommand;
+use Symfony\Component\Console\Application;
+
+require __DIR__.'/../vendor/autoload.php';
+
+$application = new Application('Eloquent IDE Helper');
+
+$application->addCommands([
+    new GeneratorCommand(),
+    new ModelsCommand()
+]);
+
+$application->run();

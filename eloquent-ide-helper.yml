@@ -1,0 +1,21 @@
+connection:
+  driver: mysql
+  database: total_expert
+  port: 3306
+  host: 127.0.0.1
+  username: vagrant
+  password: vagrant
+
+models:
+  directories:
+    - %%IDE_HELPER_CONFIG_DIR%%/src/Models
+  output: %%IDE_HELPER_CONFIG_DIR%%/_ide_helper_models.php
+  camel_cased_properties: false
+  type_overrides: []
+  custom_db_types: []
+  write: false
+  reset: true
+
+facades:
+  output: %%IDE_HELPER_CONFIG_DIR%%/_ide_helper_facades.php
+  format: php

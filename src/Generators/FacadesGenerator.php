@@ -8,9 +8,11 @@
  * @link      https://github.com/barryvdh/laravel-ide-helper
  */
 
-namespace CarterZenk\EloquentIdeHelper;
+namespace CarterZenk\EloquentIdeHelper\Generators;
 
-class Generator
+use CarterZenk\EloquentIdeHelper\Alias;
+
+class FacadesGenerator
 {
     /**
      * @var array

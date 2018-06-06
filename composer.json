@@ -19,18 +19,18 @@
         "illuminate/support": "^5.0,<5.5",
         "barryvdh/reflection-docblock": "^2.0.4",
         "symfony/class-loader": "^2.3|^3.0",
-        "symfony/console": "^3.1",
-        "symfony/config": "^3.1",
-        "symfony/yaml": "^3.1"
+        "symfony/console": "^3.1"
     },
     "require-dev": {
         "phpunit/phpunit" : "4.*",
         "scrutinizer/ocular": "~1.1",
         "squizlabs/php_codesniffer": "~2.3",
-        "doctrine/dbal": "~2.3"
+        "doctrine/dbal": "~2.3",
+        "symfony/yaml": "^3.1"
     },
     "suggest": {
-        "doctrine/dbal": "Load information from the database about models for phpdocs (~2.3)"
+        "doctrine/dbal": "Load information from the database about models for phpdocs (~2.3)",
+        "symfony/yaml": "Load configuration file in YAML format."
     },
     "autoload": {
         "psr-4": {
@@ -45,5 +45,6 @@
     "scripts": {
         "test": "phpunit",
         "cs": "phpcs --standard=psr2 src/"
-    }
+    },
+    "bin": ["bin/eloquent-ide-helper"]
 }

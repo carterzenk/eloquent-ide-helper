@@ -1,14 +1,19 @@
 <?php
 namespace CarterZenk\EloquentIdeHelper\Command;
 
-use CarterZenk\EloquentIdeHelper\Config\Config;
 use CarterZenk\EloquentIdeHelper\Config\ConfigInterface;
+use CarterZenk\EloquentIdeHelper\Config\Loader\JsonLoader;
+use CarterZenk\EloquentIdeHelper\Config\Loader\LoaderInterface;
+use CarterZenk\EloquentIdeHelper\Config\Loader\LoaderManager;
+use CarterZenk\EloquentIdeHelper\Config\Loader\PhpLoader;
+use CarterZenk\EloquentIdeHelper\Config\Loader\YamlLoader;
 use Illuminate\Database\Capsule\Manager;
-use Symfony\Component\Config\FileLocator;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Console\Style\StyleInterface;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 abstract class AbstractCommand extends Command
 {
@@ -18,9 +23,24 @@ abstract class AbstractCommand extends Command
     protected $config;
 
     /**
+     * @var LoaderInterface
+     */
+    protected $loader;
+
+    /**
+     * @var StyleInterface
+     */
+    protected $io;
+
+    /**
      * @var Manager
      */
     protected $manager;
+
+    /**
+     * @var string
+     */
+    protected $defaultConfigFile = 'eloquent-ide-helper';
 
     /**
      * {@inheritdoc}
@@ -31,7 +51,7 @@ abstract class AbstractCommand extends Command
     }
 
     /**
-     * Bootstrap the config file.
+     * Bootstrap the config file and eloquent.
      *
      * @param InputInterface $input
      * @param OutputInterface $output
@@ -40,13 +60,27 @@ abstract class AbstractCommand extends Command
      */
     public function bootstrap(InputInterface $input, OutputInterface $output)
     {
+        $this->io = new SymfonyStyle($input, $output);
+
+        if (!$this->getLoader()) {
+            $loader = new LoaderManager([
+                new JsonLoader(),
+                new PhpLoader()
+            ]);
+
+            if (class_exists('Symfony\Component\Yaml\Yaml')) {
+                $loader->addLoader(new YamlLoader());
+            }
+
+            $this->setLoader($loader);
+        }
+
         if (!$this->getConfig()) {
             $this->loadConfig($input, $output);
         }
 
         $manager = new Manager();
-        $connection = $this->config->getConnection();
-        $manager->addConnection($connection);
+        $manager->addConnection($this->config->getConnection());
         $manager->setAsGlobal();
         $manager->bootEloquent();
     }
@@ -74,7 +108,29 @@ abstract class AbstractCommand extends Command
     }
 
     /**
-     * Parse the config file and load it into the config object
+     * Sets the loader.
+     *
+     * @param LoaderInterface $loader
+     * @return $this
+     */
+    public function setLoader(LoaderInterface $loader)
+    {
+        $this->loader = $loader;
+        return $this;
+    }
+
+    /**
+     * Gets the loader.
+     *
+     * @return LoaderInterface
+     */
+    public function getLoader()
+    {
+        return $this->loader;
+    }
+
+    /**
+     * Load the config file.
      *
      * @param InputInterface $input
      * @param OutputInterface $output
@@ -84,86 +140,64 @@ abstract class AbstractCommand extends Command
      */
     protected function loadConfig(InputInterface $input, OutputInterface $output)
     {
-        $configFilePath = $this->locateConfigFile($input);
-        $output->writeln('<info>using config file</info> .' . str_replace(getcwd(), '', realpath($configFilePath)));
+        $configFile = $input->getOption('configuration');
 
-        $parser = $input->getOption('parser');
+        $configFileInfo = $configFile
+            ? $this->locateConfigFromPath($configFile)
+            : $this->locateConfigFromDirectory();
 
-        // If no parser is specified try to determine the correct one from the file extension.  Defaults to YAML
-        if (null === $parser) {
-            $extension = pathinfo($configFilePath, PATHINFO_EXTENSION);
+        $this->io->text('Using config file at '.$configFileInfo->getRealPath());
 
-            switch (strtolower($extension)) {
-                case 'json':
-                    $parser = 'json';
-                    break;
-                case 'php':
-                    $parser = 'php';
-                    break;
-                case 'yml':
-                default:
-                    $parser = 'yaml';
-            }
-        }
-
-        switch (strtolower($parser)) {
-            case 'json':
-                $config = Config::fromJson($configFilePath);
-                break;
-            case 'php':
-                $config = Config::fromPhp($configFilePath);
-                break;
-            case 'yaml':
-                $config = Config::fromYaml($configFilePath);
-                break;
-            default:
-                throw new \InvalidArgumentException(sprintf('\'%s\' is not a valid parser.', $parser));
-        }
-
-        $output->writeln('<info>using config parser</info> ' . $parser);
+        $config = $this->loader->load($configFileInfo);
 
         $this->setConfig($config);
     }
 
     /**
-     * Returns config file path
+     * Locates a config file from a given path.
      *
-     * @param InputInterface $input
-     * @return string
-     * @throws \InvalidArgumentException
-     * @throws \Exception
+     * @param string $filePath
+     * @return \SplFileInfo
      */
-    protected function locateConfigFile(InputInterface $input)
+    protected function locateConfigFromPath($filePath)
     {
-        $configFile = $input->getOption('configuration');
+        // Try to find file at absolute path first.
+        $fileInfo = new \SplFileInfo($filePath);
 
-        $useDefault = false;
-
-        if (null === $configFile || false === $configFile) {
-            $useDefault = true;
+        if ($this->loader->supports($fileInfo)) {
+            return $fileInfo;
         }
 
-        $cwd = getcwd();
+        $fileInfo = new \SplFileInfo(getcwd().DIRECTORY_SEPARATOR.$filePath);
 
-        // locate the phinx config file (default: phinx.yml)
-        // TODO - In future walk the tree in reverse (max 10 levels)
-        $locator = new FileLocator(array(
-            $cwd . DIRECTORY_SEPARATOR
-        ));
-
-        if (!$useDefault) {
-            // Locate() throws an exception if the file does not exist
-            return $locator->locate($configFile, $cwd, $first = true);
+        if ($this->loader->supports($fileInfo)) {
+            return $fileInfo;
         }
 
-        $possibleConfigFiles = array('idehelper.php', 'idehelper.json', 'idehelper.yml');
-        foreach ($possibleConfigFiles as $configFile) {
-            try {
-                return $locator->locate($configFile, $cwd, $first = true);
-            } catch (\InvalidArgumentException $exception) {
-                $lastException = $exception;
+        throw new \RuntimeException('File at '.$filePath.' is not supported');
+    }
+
+    /**
+     * Searches for a compatible config file in current working directory.
+     *
+     * @return \DirectoryIterator
+     */
+    protected function locateConfigFromDirectory()
+    {
+        $directoryIterator = new \DirectoryIterator(getcwd());
+
+        foreach ($directoryIterator as $fileInfo) {
+            $baseName = $fileInfo->getBasename('.'.$fileInfo->getExtension());
+
+            if ($baseName !== $this->defaultConfigFile) {
+                continue;
+            }
+
+            if ($this->loader->supports($fileInfo)) {
+                return $fileInfo;
             }
         }
-        throw $lastException;
+
+        throw new \RuntimeException('No supported configuration files found.');
     }
 }

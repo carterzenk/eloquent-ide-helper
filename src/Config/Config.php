@@ -1,8 +1,6 @@
 <?php
 namespace CarterZenk\EloquentIdeHelper\Config;
 
-use Symfony\Component\Yaml\Yaml;
-
 /**
  * Class Config
  * @package CarterZenk\EloquentIdeHelper\Config
@@ -81,72 +79,6 @@ class Config implements ConfigInterface
     }
 
     /**
-     * Create a new instance of the config class using a Yaml file path.
-     *
-     * @param  string $configFilePath Path to the Yaml File
-     * @throws \RuntimeException
-     * @return Config
-     */
-    public static function fromYaml($configFilePath)
-    {
-        $configFile = file_get_contents($configFilePath);
-        $configArray = Yaml::parse($configFile);
-
-        if (!is_array($configArray)) {
-            throw new \RuntimeException(sprintf(
-                'File \'%s\' must be valid YAML',
-                $configFilePath
-            ));
-        }
-        return new static($configArray, $configFilePath);
-    }
-
-    /**
-     * Create a new instance of the config class using a JSON file path.
-     *
-     * @param  string $configFilePath Path to the JSON File
-     * @throws \RuntimeException
-     * @return Config
-     */
-    public static function fromJson($configFilePath)
-    {
-        $configArray = json_decode(file_get_contents($configFilePath), true);
-        if (!is_array($configArray)) {
-            throw new \RuntimeException(sprintf(
-                'File \'%s\' must be valid JSON',
-                $configFilePath
-            ));
-        }
-        return new static($configArray, $configFilePath);
-    }
-
-    /**
-     * Create a new instance of the config class using a PHP file path.
-     *
-     * @param  string $configFilePath Path to the PHP File
-     * @throws \RuntimeException
-     * @return Config
-     */
-    public static function fromPhp($configFilePath)
-    {
-        ob_start();
-        /** @noinspection PhpIncludeInspection */
-        $configArray = include($configFilePath);
-
-        // Hide console output
-        ob_end_clean();
-
-        if (!is_array($configArray)) {
-            throw new \RuntimeException(sprintf(
-                'PHP file \'%s\' must return an array',
-                $configFilePath
-            ));
-        }
-
-        return new static($configArray, $configFilePath);
-    }
-
-    /**
      * @inheritdoc
      */
     public function getConnection()
@@ -206,8 +138,8 @@ class Config implements ConfigInterface
      */
     public function getIgnoredModels()
     {
-        return isset($this->values['models'])
-            ? $this->values['ignored']
+        return isset($this->values['models']['ignored'])
+            ? $this->values['models']['ignored']
             : [];
     }
 
@@ -273,14 +205,17 @@ class Config implements ConfigInterface
     /**
      * @param mixed $offset
      * @return mixed
+     * @throws \InvalidArgumentException
      */
     public function offsetGet($offset)
     {
         if (!array_key_exists($offset, $this->values)) {
-            throw new \InvalidArgumentException(sprintf('Identifier "%s" is not defined.', $offset));
+            throw new \InvalidArgumentException('Identifier '.$offset.' is not defined.');
         }
 
-        return $this->values[$offset] instanceof \Closure ? $this->values[$offset]($this) : $this->values[$offset];
+        return $this->values[$offset] instanceof \Closure
+            ? $this->values[$offset]($this)
+            : $this->values[$offset];
     }
 
     /**
